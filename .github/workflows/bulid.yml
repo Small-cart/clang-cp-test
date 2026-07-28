@@ -202,20 +202,18 @@ jobs:
           echo "Testing:"
           $CXX --version
 
-          # 使用多条 echo 生成测试文件，避免 heredoc 缩进问题
-          cat > reflection_test.cpp <<'ENDOFFILE'
-#include <meta>
-#include <iostream>
-
-int main()
-{
-    constexpr auto info = ^^int;
-
-    std::cout
-        << std::meta::display_string_of(info)
-        << "\n";
-}
-ENDOFFILE
+          # Generate test file using echo to avoid heredoc indentation issues in YAML
+          echo "#include <meta>" > reflection_test.cpp
+          echo "#include <iostream>" >> reflection_test.cpp
+          echo "" >> reflection_test.cpp
+          echo "int main()" >> reflection_test.cpp
+          echo "{" >> reflection_test.cpp
+          echo "    constexpr auto info = ^^int;" >> reflection_test.cpp
+          echo "" >> reflection_test.cpp
+          echo "    std::cout" >> reflection_test.cpp
+          echo "        << std::meta::display_string_of(info)" >> reflection_test.cpp
+          echo "        << \"\\n\";" >> reflection_test.cpp
+          echo "}" >> reflection_test.cpp
 
           $CXX reflection_test.cpp \
             -std=c++2c \
