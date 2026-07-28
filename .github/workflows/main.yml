@@ -1,0 +1,425 @@
+name: Build Clang P2996 Reflection
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  LLVM_REPO: bloomberg/clang-p2996
+  LLVM_BRANCH: p2996
+  BUILD_TYPE: Release
+  SCCACHE_VERSION: "0.10.0"
+
+jobs:
+
+  build:
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        include:
+
+          - name: linux-x86_64
+            os: ubuntu-24.04
+            platform: linux
+
+          - name: windows-x86_64
+            os: windows-2022
+            platform: windows
+
+
+    runs-on: ${{ matrix.os }}
+
+    timeout-minutes: 240
+
+
+    env:
+
+      INSTALL_DIR: ${{ github.workspace }}/install
+
+      SCCACHE_DIR:
+        ${{ github.workspace }}/.sccache
+
+
+    steps:
+
+
+    ############################################################
+    # Checkout
+    ############################################################
+
+    - name: Checkout clang-p2996
+
+      uses: actions/checkout@v4
+
+      with:
+
+        repository: ${{ env.LLVM_REPO }}
+
+        ref: ${{ env.LLVM_BRANCH }}
+
+        fetch-depth: 1
+
+
+
+    ############################################################
+    # Disk cleanup
+    ############################################################
+
+    - name: Free disk space (Linux)
+
+      if: matrix.platform == 'linux'
+
+      shell: bash
+
+      run: |
+
+        echo "Before cleanup"
+
+        df -h
+
+
+        sudo rm -rf /usr/local/lib/android || true
+
+        sudo rm -rf /usr/share/dotnet || true
+
+        sudo rm -rf /opt/ghc || true
+
+        sudo rm -rf /opt/hostedtoolcache/CodeQL || true
+
+
+        docker system prune -af || true
+
+
+        echo "After cleanup"
+
+        df -h
+
+
+
+    - name: Free disk space (Windows)
+
+      if: matrix.platform == 'windows'
+
+      shell: powershell
+
+      run: |
+
+
+        Get-PSDrive C
+
+
+        Remove-Item `
+          "C:\hostedtoolcache\windows\Android" `
+          -Recurse `
+          -Force `
+          -ErrorAction SilentlyContinue
+
+
+        Remove-Item `
+          "C:\Program Files\dotnet" `
+          -Recurse `
+          -Force `
+          -ErrorAction SilentlyContinue
+
+
+        Get-PSDrive C
+
+
+
+    ############################################################
+    # Linux dependencies
+    ############################################################
+
+
+    - name: Install Linux packages
+
+      if: matrix.platform == 'linux'
+
+      shell: bash
+
+      run: |
+
+        sudo apt update
+
+
+        sudo apt install -y \
+
+          ninja-build \
+
+          cmake \
+
+          python3 \
+
+          git \
+
+          curl \
+
+          xz-utils \
+
+          mold \
+
+          lld \
+
+          zlib1g-dev \
+
+          libxml2-dev \
+
+          libzstd-dev \
+
+          libedit-dev \
+
+          libncurses-dev
+
+
+
+    ############################################################
+    # Windows dependencies
+    ############################################################
+
+
+    - name: Setup MSVC
+
+      if: matrix.platform == 'windows'
+
+      uses: ilammy/msvc-dev-cmd@v1
+
+
+
+    - name: Setup Ninja Windows
+
+      if: matrix.platform == 'windows'
+
+      uses: seanmiddleditch/gha-setup-ninja@v5
+
+
+
+    ############################################################
+    # Restore sccache
+    ############################################################
+
+
+    - name: Restore sccache cache
+
+      uses: actions/cache@v4
+
+      with:
+
+        path: |
+
+          ${{ env.SCCACHE_DIR }}
+
+        key:
+
+          sccache-${{ runner.os }}-${{ github.ref_name }}
+
+        restore-keys: |
+
+          sccache-${{ runner.os }}-
+
+
+
+    ############################################################
+    # Install sccache Linux
+    ############################################################
+
+
+    - name: Install sccache Linux
+
+      if: matrix.platform == 'linux'
+
+      shell: bash
+
+      run: |
+
+
+        mkdir -p "$HOME/bin"
+
+
+        curl -L \
+
+        -o sccache.tar.gz \
+
+        https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz
+
+
+
+        tar xf sccache.tar.gz
+
+
+
+        mv \
+
+        sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache \
+
+        "$HOME/bin/sccache"
+
+
+
+        chmod +x "$HOME/bin/sccache"
+
+
+
+        echo "$HOME/bin" >> $GITHUB_PATH
+
+
+
+        sccache --version
+
+
+
+        sccache --start-server
+            ############################################################
+    # Install sccache Windows
+    ############################################################
+
+
+    - name: Install sccache Windows
+
+      if: matrix.platform == 'windows'
+
+      shell: powershell
+
+      run: |
+
+
+        $url = "https://github.com/mozilla/sccache/releases/download/v${env:SCCACHE_VERSION}/sccache-v${env:SCCACHE_VERSION}-x86_64-pc-windows-msvc.tar.gz"
+
+
+        Invoke-WebRequest `
+
+          -Uri $url `
+
+          -OutFile sccache.tar.gz
+
+
+
+        tar -xf sccache.tar.gz
+
+
+
+        $dir = "sccache-v${env:SCCACHE_VERSION}-x86_64-pc-windows-msvc"
+
+
+
+        echo "$PWD\$dir" >> $env:GITHUB_PATH
+
+
+
+        & "$PWD\$dir\sccache.exe" --version
+
+
+
+        & "$PWD\$dir\sccache.exe" --start-server
+
+
+
+    ############################################################
+    # Configure Linux
+    ############################################################
+
+
+    - name: Configure Linux
+
+      if: matrix.platform == 'linux'
+
+      shell: bash
+
+      run: |
+
+
+        export PATH="$HOME/bin:$PATH"
+
+
+        cmake \
+
+          -S llvm \
+
+          -B build \
+
+          -G Ninja \
+
+          -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+
+          -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} \
+
+          -DLLVM_ENABLE_PROJECTS="clang;lld" \
+
+          -DLLVM_TARGETS_TO_BUILD="X86" \
+
+          -DLLVM_ENABLE_ASSERTIONS=OFF \
+
+          -DLLVM_INCLUDE_TESTS=OFF \
+
+          -DLLVM_INCLUDE_DOCS=OFF \
+
+          -DLLVM_INCLUDE_EXAMPLES=OFF \
+
+          -DLLVM_INCLUDE_BENCHMARKS=OFF \
+
+          -DCLANG_INCLUDE_TESTS=OFF \
+
+          -DLLVM_USE_LINKER=mold \
+
+          -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+
+          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
+
+          -DLLVM_PARALLEL_COMPILE_JOBS=4 \
+
+          -DLLVM_PARALLEL_LINK_JOBS=2
+
+
+
+    ############################################################
+    # Configure Windows
+    ############################################################
+
+
+    - name: Configure Windows
+
+      if: matrix.platform == 'windows'
+
+      shell: cmd
+
+      run: |
+
+
+        cmake ^
+
+          -S llvm ^
+
+          -B build ^
+
+          -G Ninja ^
+
+          -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ^
+
+          -DCMAKE_INSTALL_PREFIX=%INSTALL_DIR% ^
+
+          -DLLVM_ENABLE_PROJECTS="clang;lld" ^
+
+          -DLLVM_TARGETS_TO_BUILD=X86 ^
+
+          -DLLVM_ENABLE_ASSERTIONS=OFF ^
+
+          -DLLVM_INCLUDE_TESTS=OFF ^
+
+          -DLLVM_INCLUDE_DOCS=OFF ^
+
+          -DLLVM_INCLUDE_EXAMPLES=OFF ^
+
+          -DLLVM_INCLUDE_BENCHMARKS=OFF ^
+
+          -DCLANG_INCLUDE_TESTS=OFF ^
+
+          -DCMAKE_C_COMPILER_LAUNCHER=sccache ^
+
+          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache ^
+
+          -DLLVM_PARALLEL_COMPILE_JOBS=4 ^
+
+          -DLLVM_PARALLEL_
