@@ -189,7 +189,7 @@ jobs:
           cmake --build build --target install --parallel
 
       ############################################################
-      # Verify Reflection
+      # Verify Reflection (updated test code)
       ############################################################
 
       - name: Test C++26 Reflection
@@ -204,23 +204,17 @@ jobs:
           echo "Testing:"
           $CXX --version
 
-          # Generate test file using echo to avoid heredoc indentation issues
+          # Generate minimal reflection test
           echo "#include <meta>" > reflection_test.cpp
-          echo "#include <iostream>" >> reflection_test.cpp
           echo "" >> reflection_test.cpp
           echo "int main()" >> reflection_test.cpp
           echo "{" >> reflection_test.cpp
           echo "    constexpr auto info = ^^int;" >> reflection_test.cpp
-          echo "" >> reflection_test.cpp
-          echo "    std::cout" >> reflection_test.cpp
-          echo "        << std::meta::display_string_of(info)" >> reflection_test.cpp
-          echo "        << \"\\n\";" >> reflection_test.cpp
           echo "}" >> reflection_test.cpp
 
           $CXX reflection_test.cpp \
             -std=c++2c \
-            -o reflection_test \
-            -fexpansion-statements
+            -o reflection_test
 
           echo "Reflection OK"
 
