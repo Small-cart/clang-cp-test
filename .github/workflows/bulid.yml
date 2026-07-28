@@ -14,7 +14,6 @@ env:
 
 jobs:
   build:
-
     strategy:
       fail-fast: false
       matrix:
@@ -22,13 +21,11 @@ jobs:
           - os: ubuntu-24.04
             name: linux-x86_64
             platform: linux
-
           - os: windows-2022
             name: windows-x86_64
             platform: windows
 
     runs-on: ${{ matrix.os }}
-
     timeout-minutes: 240
 
     env:
@@ -36,14 +33,12 @@ jobs:
       SCCACHE_DIR: ${{ github.workspace }}/.sccache
 
     steps:
-
       - name: Checkout clang-p2996
         uses: actions/checkout@v4
         with:
           repository: ${{ env.LLVM_REPO }}
           ref: ${{ env.LLVM_BRANCH }}
           fetch-depth: 1
-
 
       ############################################################
       # Free disk space
@@ -60,7 +55,6 @@ jobs:
           docker system prune -af || true
           df -h
 
-
       - name: Free disk space Windows
         if: matrix.platform == 'windows'
         shell: powershell
@@ -68,7 +62,6 @@ jobs:
           Remove-Item "C:\hostedtoolcache\windows\Android" -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item "C:\Program Files\dotnet" -Recurse -Force -ErrorAction SilentlyContinue
           Get-PSDrive C
-
 
       ############################################################
       # Dependencies
@@ -81,16 +74,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build cmake python3 git curl xz-utils mold lld zlib1g-dev libxml2-dev libzstd-dev libedit-dev libncurses-dev
 
-
       - name: Setup MSVC
         if: matrix.platform == 'windows'
         uses: ilammy/msvc-dev-cmd@v1
 
-
       - name: Setup Ninja Windows
         if: matrix.platform == 'windows'
         uses: seanmiddleditch/gha-setup-ninja@v5
-
 
       ############################################################
       # sccache cache
@@ -103,7 +93,6 @@ jobs:
           key: sccache-${{ runner.os }}
           restore-keys: |
             sccache-${{ runner.os }}
-
 
       ############################################################
       # Install sccache Linux
@@ -122,7 +111,6 @@ jobs:
           sccache --version
           sccache --start-server
 
-
       ############################################################
       # Install sccache Windows
       ############################################################
@@ -139,6 +127,7 @@ jobs:
           echo "$PWD\$dir" >> $env:GITHUB_PATH
           & "$PWD\$dir\sccache.exe" --version
           & "$PWD\$dir\sccache.exe" --start-server
+
       ############################################################
       # Configure Linux
       ############################################################
@@ -164,7 +153,6 @@ jobs:
             -DLLVM_PARALLEL_COMPILE_JOBS=4 \
             -DLLVM_PARALLEL_LINK_JOBS=1
 
-
       ############################################################
       # Configure Windows
       ############################################################
@@ -189,7 +177,6 @@ jobs:
             -DLLVM_PARALLEL_COMPILE_JOBS=4 ^
             -DLLVM_PARALLEL_LINK_JOBS=1
 
-
       ############################################################
       # Build
       ############################################################
@@ -199,7 +186,6 @@ jobs:
         run: |
           cmake --build build --target install --parallel
 
-
       ############################################################
       # Verify Reflection
       ############################################################
@@ -207,7 +193,6 @@ jobs:
       - name: Test C++26 Reflection
         shell: bash
         run: |
-
           if [ "${{ matrix.platform }}" = "linux" ]; then
             CXX="${INSTALL_DIR}/bin/clang++"
           else
@@ -217,7 +202,8 @@ jobs:
           echo "Testing:"
           $CXX --version
 
-          cat > reflection_test.cpp <<'EOF'
+          # 使用多条 echo 生成测试文件，避免 heredoc 缩进问题
+          cat > reflection_test.cpp <<'ENDOFFILE'
 #include <meta>
 #include <iostream>
 
@@ -229,14 +215,13 @@ int main()
         << std::meta::display_string_of(info)
         << "\n";
 }
-EOF
+ENDOFFILE
 
           $CXX reflection_test.cpp \
             -std=c++2c \
             -o reflection_test
 
           echo "Reflection OK"
-
 
       ############################################################
       # sccache statistics
@@ -247,6 +232,7 @@ EOF
         shell: bash
         run: |
           sccache --show-stats || true
+
       ############################################################
       # Generate build information
       ############################################################
@@ -254,30 +240,26 @@ EOF
       - name: Generate build info
         shell: bash
         run: |
-
           mkdir -p install/share/clang-p2996
-
-          cat > install/share/clang-p2996/build-info.txt <<EOF
-LLVM repository:
-${LLVM_REPO}
-
-LLVM branch:
-${LLVM_BRANCH}
-
-Commit:
-$(git rev-parse HEAD)
-
-Build type:
-${BUILD_TYPE}
-
-Platform:
-${{ matrix.name }}
-
-Date:
-$(date -u)
-
-EOF
-
+          {
+            echo "LLVM repository:"
+            echo "${LLVM_REPO}"
+            echo ""
+            echo "LLVM branch:"
+            echo "${LLVM_BRANCH}"
+            echo ""
+            echo "Commit:"
+            echo "$(git rev-parse HEAD)"
+            echo ""
+            echo "Build type:"
+            echo "${BUILD_TYPE}"
+            echo ""
+            echo "Platform:"
+            echo "${{ matrix.name }}"
+            echo ""
+            echo "Date:"
+            echo "$(date -u)"
+          } > install/share/clang-p2996/build-info.txt
 
       ############################################################
       # Package Linux
@@ -287,11 +269,8 @@ EOF
         if: matrix.platform == 'linux'
         shell: bash
         run: |
-
           tar -C install \
             -cJf clang-p2996-${{ matrix.name }}.tar.xz .
-
-
 
       ############################################################
       # Package Windows
@@ -301,12 +280,9 @@ EOF
         if: matrix.platform == 'windows'
         shell: powershell
         run: |
-
           Compress-Archive `
             -Path install\* `
             -DestinationPath clang-p2996-${{ matrix.name }}.zip
-
-
 
       ############################################################
       # Upload Linux artifact
@@ -316,14 +292,9 @@ EOF
         if: matrix.platform == 'linux'
         uses: actions/upload-artifact@v4
         with:
-
           name: clang-p2996-linux-x86_64
-
           path: clang-p2996-${{ matrix.name }}.tar.xz
-
           compression-level: 0
-
-
 
       ############################################################
       # Upload Windows artifact
@@ -333,14 +304,9 @@ EOF
         if: matrix.platform == 'windows'
         uses: actions/upload-artifact@v4
         with:
-
           name: clang-p2996-windows-x86_64
-
           path: clang-p2996-${{ matrix.name }}.zip
-
           compression-level: 0
-
-
 
       ############################################################
       # Upload failure logs
@@ -350,16 +316,11 @@ EOF
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-
           name: clang-p2996-log-${{ matrix.name }}
-
           path: |
             build/CMakeCache.txt
             build/**/*.log
-
           if-no-files-found: ignore
-
-
 
       ############################################################
       # Summary
@@ -369,12 +330,10 @@ EOF
         if: always()
         shell: bash
         run: |
-
           echo "================================="
           echo "Clang P2996 build finished"
           echo "Platform: ${{ matrix.name }}"
           echo "================================="
-
           if [ "${{ matrix.platform }}" = "linux" ]; then
             ${INSTALL_DIR}/bin/clang++ --version || true
           else
