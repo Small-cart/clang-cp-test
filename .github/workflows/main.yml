@@ -202,19 +202,18 @@ jobs:
           echo "Testing:"
           $CXX --version
 
-          cat > reflection_test.cpp <<'EOF'
-#include <meta>
-#include <iostream>
-
-int main()
-{
-    constexpr auto info = ^^int;
-
-    std::cout
-        << std::meta::display_string_of(info)
-        << "\n";
-}
-EOF
+          # Generate test file using echo to avoid heredoc indentation issues in YAML
+          echo "#include <meta>" > reflection_test.cpp
+          echo "#include <iostream>" >> reflection_test.cpp
+          echo "" >> reflection_test.cpp
+          echo "int main()" >> reflection_test.cpp
+          echo "{" >> reflection_test.cpp
+          echo "    constexpr auto info = ^^int;" >> reflection_test.cpp
+          echo "" >> reflection_test.cpp
+          echo "    std::cout" >> reflection_test.cpp
+          echo "        << std::meta::display_string_of(info)" >> reflection_test.cpp
+          echo "        << \"\\n\";" >> reflection_test.cpp
+          echo "}" >> reflection_test.cpp
 
           $CXX reflection_test.cpp \
             -std=c++2c \
@@ -240,25 +239,25 @@ EOF
         shell: bash
         run: |
           mkdir -p install/share/clang-p2996
-          cat > install/share/clang-p2996/build-info.txt <<EOF
-LLVM repository:
-${LLVM_REPO}
-
-LLVM branch:
-${LLVM_BRANCH}
-
-Commit:
-$(git rev-parse HEAD)
-
-Build type:
-${BUILD_TYPE}
-
-Platform:
-${{ matrix.name }}
-
-Date:
-$(date -u)
-EOF
+          {
+            echo "LLVM repository:"
+            echo "${LLVM_REPO}"
+            echo ""
+            echo "LLVM branch:"
+            echo "${LLVM_BRANCH}"
+            echo ""
+            echo "Commit:"
+            echo "$(git rev-parse HEAD)"
+            echo ""
+            echo "Build type:"
+            echo "${BUILD_TYPE}"
+            echo ""
+            echo "Platform:"
+            echo "${{ matrix.name }}"
+            echo ""
+            echo "Date:"
+            echo "$(date -u)"
+          } > install/share/clang-p2996/build-info.txt
 
       ############################################################
       # Package Linux
