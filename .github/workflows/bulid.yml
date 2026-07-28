@@ -108,6 +108,8 @@ jobs:
           mv sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache $HOME/bin/sccache
           chmod +x $HOME/bin/sccache
           echo "$HOME/bin" >> $GITHUB_PATH
+          # Make sccache available in the current step
+          export PATH="$HOME/bin:$PATH"
           sccache --version
           sccache --start-server
 
@@ -202,7 +204,7 @@ jobs:
           echo "Testing:"
           $CXX --version
 
-          # Generate test file using echo to avoid heredoc indentation issues in YAML
+          # Generate test file using echo to avoid heredoc indentation issues
           echo "#include <meta>" > reflection_test.cpp
           echo "#include <iostream>" >> reflection_test.cpp
           echo "" >> reflection_test.cpp
@@ -217,7 +219,8 @@ jobs:
 
           $CXX reflection_test.cpp \
             -std=c++2c \
-            -o reflection_test
+            -o reflection_test \
+            -fexpansion-statements
 
           echo "Reflection OK"
 
