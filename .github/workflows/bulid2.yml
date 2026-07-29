@@ -1,0 +1,495 @@
+name: Build Clang P2996 2
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  LLVM_REPO: bloomberg/clang-p2996
+  LLVM_BRANCH: p2996
+  BUILD_TYPE: Release
+  SCCACHE_VERSION: "0.10.0"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            name: linux-x86_64
+            platform: linux
+
+          - os: windows-2022
+            name: windows-x86_64
+            platform: windows
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 300
+
+    env:
+      INSTALL_DIR: ${{ github.workspace }}/install
+      SCCACHE_DIR: ${{ github.workspace }}/.sccache
+
+    steps:
+      - name: Checkout clang-p2996
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.LLVM_REPO }}
+          ref: ${{ env.LLVM_BRANCH }}
+          fetch-depth: 1
+
+############################################################
+# Free disk
+############################################################
+
+      - name: Free disk Linux
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /opt/hostedtoolcache/CodeQL || true
+          docker system prune -af || true
+          df -h
+
+      - name: Free disk Windows
+        if: matrix.platform == 'windows'
+        shell: powershell
+        run: |
+          Remove-Item "C:\hostedtoolcache\windows\Android" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item "C:\Program Files\dotnet" -Recurse -Force -ErrorAction SilentlyContinue
+          Get-PSDrive C
+
+############################################################
+# Dependencies
+############################################################
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ninja-build \
+            cmake \
+            python3 \
+            git \
+            curl \
+            xz-utils \
+            mold \
+            lld \
+            zlib1g-dev \
+            libxml2-dev \
+            libzstd-dev \
+            libedit-dev \
+            libncurses-dev
+
+      - name: Setup MSVC
+        if: matrix.platform == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Setup Ninja
+        if: matrix.platform == 'windows'
+        uses: seanmiddleditch/gha-setup-ninja@v5
+
+############################################################
+# Cache
+############################################################
+
+      - name: Cache sccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.SCCACHE_DIR }}
+          key: sccache-${{ runner.os }}
+          restore-keys: |
+            sccache-${{ runner.os }}
+
+############################################################
+# Install sccache Linux
+############################################################
+
+      - name: Install sccache Linux
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          mkdir -p $HOME/bin
+
+          curl -L \
+            https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz \
+            -o sccache.tar.gz
+
+          tar xf sccache.tar.gz
+
+          mv sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache $HOME/bin/
+
+          chmod +x $HOME/bin/sccache
+
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+          export PATH="$HOME/bin:$PATH"
+
+          sccache --version
+
+          sccache --start-server
+
+############################################################
+# Install sccache Windows
+############################################################
+
+      - name: Install sccache Windows
+        if: matrix.platform == 'windows'
+        shell: powershell
+        run: |
+          $version=$env:SCCACHE_VERSION
+
+          Invoke-WebRequest `
+            -Uri "https://github.com/mozilla/sccache/releases/download/v$version/sccache-v$version-x86_64-pc-windows-msvc.tar.gz" `
+            -OutFile sccache.tar.gz
+
+          tar -xf sccache.tar.gz
+
+          $dir="sccache-v$version-x86_64-pc-windows-msvc"
+
+          echo "$PWD\$dir" >> $env:GITHUB_PATH
+
+          & "$PWD\$dir\sccache.exe" --version
+
+          & "$PWD\$dir\sccache.exe" --start-server
+
+############################################################
+# Configure Linux
+############################################################
+
+      - name: Configure Linux
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          cmake -S llvm -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+            -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} \
+            -DLLVM_ENABLE_PROJECTS="clang;lld" \
+            -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" \
+            -DLLVM_TARGETS_TO_BUILD=X86 \
+            -DLLVM_ENABLE_ASSERTIONS=OFF \
+            -DLLVM_INCLUDE_TESTS=OFF \
+            -DLLVM_INCLUDE_DOCS=OFF \
+            -DLLVM_INCLUDE_EXAMPLES=OFF \
+            -DLLVM_INCLUDE_BENCHMARKS=OFF \
+            -DCLANG_INCLUDE_TESTS=OFF \
+            -DLLVM_INSTALL_UTILS=ON \
+            -DLLVM_USE_LINKER=mold \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
+            -DLLVM_PARALLEL_COMPILE_JOBS=4 \
+            -DLLVM_PARALLEL_LINK_JOBS=1
+
+############################################################
+# Configure Windows
+############################################################
+
+      - name: Configure Windows
+        if: matrix.platform == 'windows'
+        shell: cmd
+        run: |
+          cmake -S llvm -B build -G Ninja ^
+            -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ^
+            -DCMAKE_INSTALL_PREFIX=%INSTALL_DIR% ^
+            -DLLVM_ENABLE_PROJECTS="clang;lld" ^
+            -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" ^
+            -DLLVM_TARGETS_TO_BUILD=X86 ^
+            -DLLVM_ENABLE_ASSERTIONS=OFF ^
+            -DLLVM_INCLUDE_TESTS=OFF ^
+            -DLLVM_INCLUDE_DOCS=OFF ^
+            -DLLVM_INCLUDE_EXAMPLES=OFF ^
+            -DLLVM_INCLUDE_BENCHMARKS=OFF ^
+            -DCLANG_INCLUDE_TESTS=OFF ^
+            -DLLVM_INSTALL_UTILS=ON ^
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache ^
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache ^
+            -DLLVM_PARALLEL_COMPILE_JOBS=4 ^
+            -DLLVM_PARALLEL_LINK_JOBS=1
+            ############################################################
+# Build
+############################################################
+
+      - name: Build clang
+        shell: bash
+        run: |
+          cmake --build build --target clang --parallel
+
+      - name: Build lld
+        shell: bash
+        run: |
+          cmake --build build --target lld --parallel
+
+      - name: Build libc++
+        shell: bash
+        run: |
+          cmake --build build --target cxx --parallel
+
+      - name: Build libc++abi
+        shell: bash
+        run: |
+          cmake --build build --target cxxabi --parallel
+
+      - name: Build libunwind
+        shell: bash
+        run: |
+          cmake --build build --target unwind --parallel
+
+############################################################
+# Install
+############################################################
+
+      - name: Install
+        shell: bash
+        run: |
+          cmake --build build --target install
+
+############################################################
+# Copy libc++ headers if install missed them
+############################################################
+
+      - name: Copy libc++ headers (Linux)
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          mkdir -p install/include/c++/v1
+
+          if [ -d build/include/c++/v1 ]; then
+            cp -a build/include/c++/v1/. install/include/c++/v1/
+          fi
+
+          if ls build/include/*/c++/v1 >/dev/null 2>&1; then
+            cp -a build/include/*/c++/v1/. install/include/c++/v1/
+          fi
+
+      - name: Copy libc++ headers (Windows)
+        if: matrix.platform == 'windows'
+        shell: powershell
+        run: |
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            install\include\c++\v1 | Out-Null
+
+          if (Test-Path build\include\c++\v1)
+          {
+            Copy-Item `
+              build\include\c++\v1\* `
+              install\include\c++\v1 `
+              -Recurse `
+              -Force
+          }
+
+          Get-ChildItem build\include -Directory | ForEach-Object {
+
+            $p = Join-Path $_.FullName "c++\v1"
+
+            if(Test-Path $p)
+            {
+                Copy-Item `
+                  "$p\*" `
+                  install\include\c++\v1 `
+                  -Recurse `
+                  -Force
+            }
+          }
+
+############################################################
+# Reflection test
+############################################################
+
+      - name: Test Reflection
+        continue-on-error: true
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform }}" = "linux" ]; then
+            CXX=build/bin/clang++
+          else
+            CXX=build/bin/clang++.exe
+          fi
+
+          $CXX --version
+
+          cat > reflection_test.cpp <<EOF
+          #include <meta>
+
+          int main()
+          {
+              constexpr auto info = ^^int;
+              (void)info;
+          }
+          EOF
+
+          if [ "${{ matrix.platform }}" = "linux" ]; then
+
+            $CXX \
+              reflection_test.cpp \
+              -std=c++2c \
+              -freflection \
+              -stdlib=libc++ \
+              -nostdinc++ \
+              -isystem install/include/c++/v1 \
+              -o reflection_test
+
+          else
+
+            $CXX ^
+              reflection_test.cpp ^
+              -std=c++2c ^
+              -freflection ^
+              -nostdinc++ ^
+              -isystem install/include/c++/v1 ^
+              -o reflection_test.exe
+
+          fi
+
+############################################################
+# sccache stats
+############################################################
+
+      - name: sccache statistics
+        if: always()
+        shell: bash
+        run: |
+          sccache --show-stats || true
+          ############################################################
+# Generate build information
+############################################################
+
+      - name: Generate build info
+        shell: bash
+        run: |
+          mkdir -p install/share/clang-p2996
+
+          {
+            echo "LLVM repository:"
+            echo "${LLVM_REPO}"
+            echo
+
+            echo "LLVM branch:"
+            echo "${LLVM_BRANCH}"
+            echo
+
+            echo "Commit:"
+            git rev-parse HEAD
+            echo
+
+            echo "Build type:"
+            echo "${BUILD_TYPE}"
+            echo
+
+            echo "Platform:"
+            echo "${{ matrix.name }}"
+            echo
+
+            echo "UTC:"
+            date -u
+          } > install/share/clang-p2996/build-info.txt
+
+############################################################
+# Package Linux
+############################################################
+
+      - name: Package Linux
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          tar \
+            -C install \
+            -cJf clang-p2996-linux-x86_64.tar.xz \
+            .
+
+############################################################
+# Package Windows
+############################################################
+
+      - name: Package Windows
+        if: matrix.platform == 'windows'
+        shell: powershell
+        run: |
+          Compress-Archive `
+            -Path install\* `
+            -DestinationPath clang-p2996-windows-x86_64.zip `
+            -Force
+
+############################################################
+# Upload toolchain
+############################################################
+
+      - name: Upload Linux Toolchain
+        if: matrix.platform == 'linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang-p2996-linux-x86_64
+          path: clang-p2996-linux-x86_64.tar.xz
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Upload Windows Toolchain
+        if: matrix.platform == 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang-p2996-windows-x86_64
+          path: clang-p2996-windows-x86_64.zip
+          compression-level: 0
+          if-no-files-found: error
+
+############################################################
+# Upload logs
+############################################################
+
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.name }}
+          if-no-files-found: ignore
+          path: |
+            build/CMakeCache.txt
+            build/**/*.log
+            build/**/*.txt
+
+############################################################
+# Upload install directory
+############################################################
+
+      - name: Upload install tree
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-${{ matrix.name }}
+          path: install
+          compression-level: 0
+
+############################################################
+# Summary
+############################################################
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          echo "===================================="
+          echo "Build Finished"
+          echo "===================================="
+
+          if [ "${{ matrix.platform }}" = "linux" ]; then
+            build/bin/clang++ --version || true
+          else
+            build/bin/clang++.exe --version || true
+          fi
+
+          echo
+          echo "Installed headers:"
+          find install/include -name meta 2>/dev/null || true
+          find install/include -name experimental 2>/dev/null || true
+
+          echo
+          echo "Finished."
