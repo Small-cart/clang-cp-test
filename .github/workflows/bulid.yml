@@ -188,35 +188,7 @@ jobs:
         run: |
           cmake --build build --target install --parallel
 
-      ############################################################
-      # Verify Reflection (updated test code)
-      ############################################################
-
-      - name: Test C++26 Reflection
-        shell: bash
-        run: |
-          if [ "${{ matrix.platform }}" = "linux" ]; then
-            CXX="${INSTALL_DIR}/bin/clang++"
-          else
-            CXX="${INSTALL_DIR}/bin/clang++.exe"
-          fi
-
-          echo "Testing:"
-          $CXX --version
-
-          # Generate minimal reflection test
-          echo "" >> reflection_test.cpp
-          echo "int main()" >> reflection_test.cpp
-          echo "{" >> reflection_test.cpp
-          echo "    constexpr auto info = ^^int;" >> reflection_test.cpp
-          echo "}" >> reflection_test.cpp
-
-          $CXX reflection_test.cpp \
-            -std=c++2c \
-            -o reflection_test
-
-          echo "Reflection OK"
-
+      
       ############################################################
       # sccache statistics
       ############################################################
@@ -301,6 +273,35 @@ jobs:
           name: clang-p2996-windows-x86_64
           path: clang-p2996-${{ matrix.name }}.zip
           compression-level: 0
+############################################################
+      # Verify Reflection (updated test code)
+      ############################################################
+
+      - name: Test C++26 Reflection
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform }}" = "linux" ]; then
+            CXX="${INSTALL_DIR}/bin/clang++"
+          else
+            CXX="${INSTALL_DIR}/bin/clang++.exe"
+          fi
+
+          echo "Testing:"
+          $CXX --version
+
+          # Generate minimal reflection test
+          echo "" >> reflection_test.cpp
+          echo "int main()" >> reflection_test.cpp
+          echo "{" >> reflection_test.cpp
+          echo "    constexpr auto info = ^^int;" >> reflection_test.cpp
+          echo "}" >> reflection_test.cpp
+
+          $CXX reflection_test.cpp \
+            -std=c++2c \
+            -freflection \
+            -o reflection_test 
+
+          echo "Reflection OK"
 
       ############################################################
       # Upload failure logs
