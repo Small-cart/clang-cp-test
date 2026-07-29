@@ -205,7 +205,6 @@ jobs:
           $CXX --version
 
           # Generate minimal reflection test
-          echo "#include <meta>" > reflection_test.cpp
           echo "" >> reflection_test.cpp
           echo "int main()" >> reflection_test.cpp
           echo "{" >> reflection_test.cpp
