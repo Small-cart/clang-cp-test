@@ -1,0 +1,105 @@
+name: Build LLVM Windows
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    env:
+      BUILD_TYPE: Release
+      INSTALL_DIR: ${{ github.workspace }}/install
+
+    steps:
+
+    - name: Checkout LLVM
+      uses: actions/checkout@v4
+      with:
+        repository: llvm/llvm-project
+        path: llvm
+        fetch-depth: 1
+
+
+    - name: Install dependencies
+      shell: powershell
+      run: |
+        choco install ninja cmake python git -y
+
+
+    - name: Setup sccache
+      uses: mozilla-actions/sccache-action@v0.0.9
+
+
+    - name: Configure LLVM
+      shell: cmd
+      run: |
+        cmake -S llvm/llvm -B build -G Ninja ^
+          -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ^
+          -DCMAKE_INSTALL_PREFIX=%INSTALL_DIR% ^
+          -DLLVM_ENABLE_PROJECTS="clang;lld" ^
+          -DLLVM_ENABLE_RUNTIMES="libcxx" ^
+          -DLLVM_TARGETS_TO_BUILD=X86 ^
+          -DLLVM_ENABLE_ASSERTIONS=OFF ^
+          -DLLVM_INCLUDE_TESTS=OFF ^
+          -DLLVM_INCLUDE_DOCS=OFF ^
+          -DLLVM_INCLUDE_EXAMPLES=OFF ^
+          -DLLVM_INCLUDE_BENCHMARKS=OFF ^
+          -DCLANG_INCLUDE_TESTS=OFF ^
+          -DLLVM_INSTALL_UTILS=ON ^
+          -DLIBCXX_ENABLE_SHARED=ON ^
+          -DLIBCXX_ENABLE_STATIC=OFF ^
+          -DLIBCXX_USE_COMPILER_RT=OFF ^
+          -DCMAKE_C_COMPILER_LAUNCHER=sccache ^
+          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache ^
+          -DLLVM_PARALLEL_COMPILE_JOBS=4 ^
+          -DLLVM_PARALLEL_LINK_JOBS=1
+
+
+    - name: Build LLVM
+      shell: cmd
+      run: |
+        cmake --build build --parallel
+
+
+    - name: Install LLVM
+      shell: cmd
+      run: |
+        cmake --install build
+
+
+    - name: Test clang
+      shell: cmd
+      run: |
+        %INSTALL_DIR%\bin\clang.exe --version
+        %INSTALL_DIR%\bin\clang++.exe --version
+
+
+    - name: Test libc++
+      shell: cmd
+      run: |
+        echo #include ^<vector^> > test.cpp
+        echo int main(){std::vector<int> v{1,2,3};} >> test.cpp
+
+        %INSTALL_DIR%\bin\clang++.exe ^
+          test.cpp ^
+          -std=c++26 ^
+          -stdlib=libc++ ^
+          -lc++
+
+
+    - name: Package
+      shell: powershell
+      run: |
+        Compress-Archive `
+          -Path "${{ env.INSTALL_DIR }}\*" `
+          -DestinationPath llvm-windows.zip `
+          -CompressionLevel Optimal
+
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: llvm-windows
+        path: llvm-windows.zip
+        compression-level: 0
