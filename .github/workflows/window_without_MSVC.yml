@@ -122,6 +122,25 @@ jobs:
 
 
     # --------------------------
+    # 生成 clang++.cfg
+    # clang++ 每次启动自动加载，无需手动加参数
+    # 相对路径基于 cfg 所在目录（install\bin）解析，整体可搬移
+    # --------------------------
+    - name: Create clang++ config
+      shell: cmd
+      run: |
+
+        (
+          echo -stdlib=libc++
+          echo -isystem ../include/c++/v1
+          echo -L ../lib
+          echo -fuse-ld=lld
+        ) > "%INSTALL_DIR%\bin\clang++.cfg"
+
+        type "%INSTALL_DIR%\bin\clang++.cfg"
+
+
+    # --------------------------
     # Check clang
     # --------------------------
     - name: Test clang
@@ -133,7 +152,7 @@ jobs:
 
 
     # --------------------------
-    # Test libc++（无需 MSVC 环境）
+    # Test libc++（无需 MSVC，也无需额外参数）
     # --------------------------
     - name: Test libc++
       shell: cmd
@@ -142,20 +161,13 @@ jobs:
         echo #include ^<vector^> > test.cpp
         echo int main(){std::vector^<int^> v{1,2,3};} >> test.cpp
 
-        %INSTALL_DIR%\bin\clang++.exe ^
-          test.cpp ^
-          -std=c++26 ^
-          -stdlib=libc++ ^
-          -isystem "%INSTALL_DIR%\include\c++\v1" ^
-          -L "%INSTALL_DIR%\lib" ^
-          -fuse-ld=lld ^
-          -o test.exe
+        %INSTALL_DIR%\bin\clang++.exe test.cpp -std=c++26 -o test.exe
 
         test.exe
 
 
     # --------------------------
-    # Test Reflection（无需 MSVC 环境）
+    # Test Reflection（无需 MSVC，也无需额外参数）
     # --------------------------
     - name: Test Reflection
       shell: cmd
@@ -166,15 +178,7 @@ jobs:
         echo constexpr auto r = ^^A; >> reflection.cpp
         echo int main(){} >> reflection.cpp
 
-        %INSTALL_DIR%\bin\clang++.exe ^
-          reflection.cpp ^
-          -std=c++26 ^
-          -freflection ^
-          -stdlib=libc++ ^
-          -isystem "%INSTALL_DIR%\include\c++\v1" ^
-          -L "%INSTALL_DIR%\lib" ^
-          -fuse-ld=lld ^
-          -o reflection.exe
+        %INSTALL_DIR%\bin\clang++.exe reflection.cpp -std=c++26 -freflection -o reflection.exe
 
         reflection.exe
 
