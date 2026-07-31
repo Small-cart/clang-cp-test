@@ -146,6 +146,8 @@ jobs:
           test.cpp ^
           -std=c++26 ^
           -stdlib=libc++ ^
+          -isystem "%INSTALL_DIR%\include\c++\v1" ^
+          -L "%INSTALL_DIR%\lib" ^
           -fuse-ld=lld ^
           -o test.exe
 
@@ -169,6 +171,8 @@ jobs:
           -std=c++26 ^
           -freflection ^
           -stdlib=libc++ ^
+          -isystem "%INSTALL_DIR%\include\c++\v1" ^
+          -L "%INSTALL_DIR%\lib" ^
           -fuse-ld=lld ^
           -o reflection.exe
 
