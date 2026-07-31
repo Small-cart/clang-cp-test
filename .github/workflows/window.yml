@@ -59,7 +59,7 @@ jobs:
 
           -DLLVM_ENABLE_PROJECTS="clang;lld" ^
 
-          -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" ^
+          -DLLVM_ENABLE_RUNTIMES="libcxx" ^
 
           -DLLVM_TARGETS_TO_BUILD=X86 ^
 
@@ -74,17 +74,8 @@ jobs:
           -DLIBCXX_ENABLE_SHARED=OFF ^
           -DLIBCXX_ENABLE_STATIC=ON ^
 
-          -DLIBCXXABI_ENABLE_SHARED=OFF ^
-          -DLIBCXXABI_ENABLE_STATIC=ON ^
-
-          -DLIBUNWIND_ENABLE_SHARED=OFF ^
-          -DLIBUNWIND_ENABLE_STATIC=ON ^
-
           -DLIBCXX_ENABLE_EXCEPTIONS=ON ^
           -DLIBCXX_ENABLE_RTTI=ON ^
-
-          -DLIBCXXABI_ENABLE_EXCEPTIONS=ON ^
-          -DLIBCXXABI_ENABLE_RTTI=ON ^
 
           -DLLVM_PARALLEL_COMPILE_JOBS=4 ^
           -DLLVM_PARALLEL_LINK_JOBS=1
