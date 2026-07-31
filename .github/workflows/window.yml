@@ -14,9 +14,6 @@ jobs:
 
     steps:
 
-    # ==========================
-    # 获取 LLVM
-    # ==========================
     - name: Checkout LLVM
       uses: actions/checkout@v4
       with:
@@ -25,25 +22,16 @@ jobs:
         fetch-depth: 1
 
 
-    # ==========================
-    # 安装依赖
-    # ==========================
     - name: Install dependencies
       shell: powershell
       run: |
         choco install ninja cmake mingw python git -y
 
 
-    # ==========================
-    # sccache
-    # ==========================
     - name: Setup sccache
       uses: mozilla-actions/sccache-action@v0.0.9
 
 
-    # ==========================
-    # Configure
-    # ==========================
     - name: Configure LLVM
       shell: cmd
       run: |
@@ -71,11 +59,14 @@ jobs:
           -DLIBCXX_ENABLE_SHARED=ON ^
           -DLIBCXX_ENABLE_STATIC=OFF ^
 
-          -DLIBCXXABI_ENABLE_SHARED=ON ^
-          -DLIBCXXABI_ENABLE_STATIC=OFF ^
+          -DLIBCXXABI_ENABLE_SHARED=OFF ^
+          -DLIBCXXABI_ENABLE_STATIC=ON ^
 
-          -DLIBUNWIND_ENABLE_SHARED=ON ^
-          -DLIBUNWIND_ENABLE_STATIC=OFF ^
+          -DLIBUNWIND_ENABLE_SHARED=OFF ^
+          -DLIBUNWIND_ENABLE_STATIC=ON ^
+
+          -DLIBCXXABI_ENABLE_EXCEPTIONS=ON ^
+          -DLIBCXXABI_ENABLE_RTTI=ON ^
 
           -DCMAKE_C_COMPILER_LAUNCHER=sccache ^
           -DCMAKE_CXX_COMPILER_LAUNCHER=sccache ^
@@ -84,27 +75,18 @@ jobs:
           -DLLVM_PARALLEL_LINK_JOBS=1
 
 
-    # ==========================
-    # Build
-    # ==========================
     - name: Build LLVM
       shell: cmd
       run: |
         cmake --build build --parallel
 
 
-    # ==========================
-    # Install
-    # ==========================
     - name: Install LLVM
       shell: cmd
       run: |
         cmake --install build
 
 
-    # ==========================
-    # 测试 clang
-    # ==========================
     - name: Test clang
       shell: cmd
       run: |
@@ -112,9 +94,6 @@ jobs:
         %INSTALL_DIR%\bin\clang++.exe --version
 
 
-    # ==========================
-    # 测试 libc++
-    # ==========================
     - name: Test libc++
       shell: cmd
       run: |
@@ -129,10 +108,7 @@ jobs:
           -fuse-ld=lld
 
 
-    # ==========================
-    # 测试 Reflection
-    # ==========================
-    - name: Test C++26 Reflection
+    - name: Test Reflection
       shell: cmd
       continue-on-error: true
       run: |
@@ -150,9 +126,6 @@ jobs:
           -fuse-ld=lld
 
 
-    # ==========================
-    # 打包
-    # ==========================
     - name: Package
       shell: powershell
       run: |
@@ -163,9 +136,6 @@ jobs:
           -CompressionLevel Optimal
 
 
-    # ==========================
-    # 上传
-    # ==========================
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
