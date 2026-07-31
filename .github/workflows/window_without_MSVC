@@ -1,0 +1,199 @@
+name: Build clang-p2996 Windows (self-contained libc++)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+
+    runs-on: windows-latest
+
+    env:
+      BUILD_TYPE: Release
+      INSTALL_DIR: ${{ github.workspace }}\install
+
+
+    steps:
+
+    # --------------------------
+    # Checkout clang-p2996
+    # --------------------------
+    - name: Checkout clang-p2996
+      uses: actions/checkout@v4
+      with:
+        repository: bloomberg/clang-p2996
+        ref: p2996
+        path: llvm
+        fetch-depth: 1
+
+
+    # --------------------------
+    # MinGW 环境（windows-latest 自带 C:\mingw64）
+    # --------------------------
+    - name: Setup MinGW
+      shell: cmd
+      run: |
+        where gcc g++
+        gcc --version
+        g++ --version
+
+
+    # --------------------------
+    # Dependencies
+    # --------------------------
+    - name: Install dependencies
+      shell: powershell
+      run: |
+        choco install ninja cmake python -y
+
+
+    # --------------------------
+    # Configure
+    # GNU ABI + LLVM 自带运行库，构建出的 clang 不依赖 MSVC
+    # --------------------------
+    - name: Configure LLVM
+      shell: cmd
+      run: |
+
+        cmake -S llvm/llvm -B build -G Ninja ^
+          -DCMAKE_BUILD_TYPE=%BUILD_TYPE% ^
+          -DCMAKE_INSTALL_PREFIX=%INSTALL_DIR% ^
+
+          -DCMAKE_C_COMPILER=gcc ^
+          -DCMAKE_CXX_COMPILER=g++ ^
+          -DCMAKE_ASM_COMPILER=gcc ^
+
+          -DLLVM_DEFAULT_TARGET_TRIPLE=x86_64-w64-windows-gnu ^
+
+          -DLLVM_ENABLE_PROJECTS="clang;lld" ^
+
+          -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind;compiler-rt" ^
+
+          -DLLVM_TARGETS_TO_BUILD=X86 ^
+
+          -DLLVM_ENABLE_ASSERTIONS=OFF ^
+          -DLLVM_INCLUDE_TESTS=OFF ^
+          -DLLVM_INCLUDE_DOCS=OFF ^
+          -DLLVM_INCLUDE_EXAMPLES=OFF ^
+          -DLLVM_INCLUDE_BENCHMARKS=OFF ^
+
+          -DLLVM_INSTALL_UTILS=ON ^
+
+          -DLIBCXX_ENABLE_SHARED=OFF ^
+          -DLIBCXX_ENABLE_STATIC=ON ^
+          -DLIBCXX_ENABLE_ABI_LIBRARY=libcxxabi ^
+          -DLIBCXX_ENABLE_EXCEPTIONS=ON ^
+          -DLIBCXX_ENABLE_RTTI=ON ^
+
+          -DLIBCXXABI_ENABLE_SHARED=OFF ^
+          -DLIBCXXABI_ENABLE_STATIC=ON ^
+          -DLIBCXXABI_ENABLE_EXCEPTIONS=ON ^
+          -DLIBCXXABI_ENABLE_RTTI=ON ^
+
+          -DLIBUNWIND_ENABLE_SHARED=OFF ^
+          -DLIBUNWIND_ENABLE_STATIC=ON ^
+
+          -DCOMPILER_RT_BUILD_SANITIZERS=OFF ^
+          -DCOMPILER_RT_BUILD_XRAY=OFF ^
+          -DCOMPILER_RT_BUILD_LIBFUZZER=OFF ^
+          -DCOMPILER_RT_BUILD_PROFILE=OFF ^
+          -DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON ^
+
+          -DLLVM_PARALLEL_COMPILE_JOBS=4 ^
+          -DLLVM_PARALLEL_LINK_JOBS=1
+
+
+    # --------------------------
+    # Build
+    # --------------------------
+    - name: Build LLVM
+      shell: cmd
+      run: |
+        cmake --build build --parallel
+
+
+    # --------------------------
+    # Install
+    # --------------------------
+    - name: Install LLVM
+      shell: cmd
+      run: |
+        cmake --install build
+
+
+    # --------------------------
+    # Check clang
+    # --------------------------
+    - name: Test clang
+      shell: cmd
+      run: |
+
+        %INSTALL_DIR%\bin\clang.exe --version
+        %INSTALL_DIR%\bin\clang++.exe --version
+
+
+    # --------------------------
+    # Test libc++（无需 MSVC 环境）
+    # --------------------------
+    - name: Test libc++
+      shell: cmd
+      run: |
+
+        echo #include ^<vector^> > test.cpp
+        echo int main(){std::vector^<int^> v{1,2,3};} >> test.cpp
+
+        %INSTALL_DIR%\bin\clang++.exe ^
+          test.cpp ^
+          -std=c++26 ^
+          -stdlib=libc++ ^
+          -fuse-ld=lld ^
+          -o test.exe
+
+        test.exe
+
+
+    # --------------------------
+    # Test Reflection（无需 MSVC 环境）
+    # --------------------------
+    - name: Test Reflection
+      shell: cmd
+      continue-on-error: true
+      run: |
+
+        echo struct A{int x;}; > reflection.cpp
+        echo constexpr auto r = ^^A; >> reflection.cpp
+        echo int main(){} >> reflection.cpp
+
+        %INSTALL_DIR%\bin\clang++.exe ^
+          reflection.cpp ^
+          -std=c++26 ^
+          -freflection ^
+          -stdlib=libc++ ^
+          -fuse-ld=lld ^
+          -o reflection.exe
+
+        reflection.exe
+
+
+    # --------------------------
+    # Package
+    # --------------------------
+    - name: Package
+      shell: powershell
+      run: |
+
+        Compress-Archive `
+          -Path "${{ env.INSTALL_DIR }}\*" `
+          -DestinationPath clang-p2996-windows-libcxx.zip `
+          -CompressionLevel Optimal
+
+
+    # --------------------------
+    # Upload
+    # --------------------------
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: clang-p2996-windows-libcxx
+        path: clang-p2996-windows-libcxx.zip
+        compression-level: 0
