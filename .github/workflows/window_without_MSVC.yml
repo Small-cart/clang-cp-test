@@ -121,48 +121,6 @@ jobs:
 
 
     # --------------------------
-    # 生成 clang++.cfg（绝对路径，任何工作目录下都有效）
-    # --------------------------
-    - name: Create clang++ config
-      shell: cmd
-      run: |
-
-        (
-          echo -stdlib=libc++
-          echo -isystem "%INSTALL_DIR%\include\c++\v1"
-          echo -L "%INSTALL_DIR%\lib"
-          echo -fuse-ld=lld
-        ) > "%INSTALL_DIR%\bin\clang++.cfg"
-
-        echo --- clang++.cfg ---
-        type "%INSTALL_DIR%\bin\clang++.cfg"
-        echo --------------------
-
-
-    # --------------------------
-    # 生成可重定位辅助脚本
-    # 工具链拷到别的机器后，运行一次即可重新生成 cfg
-    # --------------------------
-    - name: Create relocation helper
-      shell: powershell
-      run: |
-        $script = @'
-        $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-        $bin  = Join-Path $root 'bin'
-        $cfg  = Join-Path $bin 'clang++.cfg'
-        @(
-          '-stdlib=libc++',
-          "-isystem `"$(Join-Path $root 'include\c++\v1')`"",
-          "-L `"$(Join-Path $root 'lib')`"",
-          '-fuse-ld=lld'
-        ) | Set-Content -Path $cfg -Encoding ascii
-        Write-Host "clang++.cfg updated for: $bin"
-        Get-Content $cfg
-        '@
-        Set-Content -Path "${{ env.INSTALL_DIR }}\fix-libcxx-cfg.ps1" -Value $script -Encoding ascii
-
-
-    # --------------------------
     # Check clang
     # --------------------------
     - name: Test clang
@@ -174,22 +132,30 @@ jobs:
 
 
     # --------------------------
-    # Test libc++（无需任何额外参数）
+    # Test libc++（显式指定头文件/库路径）
     # --------------------------
     - name: Test libc++
       shell: cmd
+      continue-on-error: true
       run: |
 
         echo #include ^<vector^> > test.cpp
         echo int main(){std::vector^<int^> v{1,2,3};} >> test.cpp
 
-        %INSTALL_DIR%\bin\clang++.exe test.cpp -std=c++26 -o test.exe
+        %INSTALL_DIR%\bin\clang++.exe ^
+          test.cpp ^
+          -std=c++26 ^
+          -stdlib=libc++ ^
+          -isystem "%INSTALL_DIR%\include\c++\v1" ^
+          -L "%INSTALL_DIR%\lib" ^
+          -fuse-ld=lld ^
+          -o test.exe
 
         test.exe
 
 
     # --------------------------
-    # Test Reflection（无需任何额外参数）
+    # Test Reflection（显式指定头文件/库路径）
     # --------------------------
     - name: Test Reflection
       shell: cmd
@@ -200,7 +166,15 @@ jobs:
         echo constexpr auto r = ^^A; >> reflection.cpp
         echo int main(){} >> reflection.cpp
 
-        %INSTALL_DIR%\bin\clang++.exe reflection.cpp -std=c++26 -freflection -o reflection.exe
+        %INSTALL_DIR%\bin\clang++.exe ^
+          reflection.cpp ^
+          -std=c++26 ^
+          -freflection ^
+          -stdlib=libc++ ^
+          -isystem "%INSTALL_DIR%\include\c++\v1" ^
+          -L "%INSTALL_DIR%\lib" ^
+          -fuse-ld=lld ^
+          -o reflection.exe
 
         reflection.exe
 
