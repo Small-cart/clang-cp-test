@@ -49,7 +49,6 @@ jobs:
 
     # --------------------------
     # Configure
-    # GNU ABI + LLVM 自带运行库，构建出的 clang 不依赖 MSVC
     # --------------------------
     - name: Configure LLVM
       shell: cmd
@@ -122,9 +121,7 @@ jobs:
 
 
     # --------------------------
-    # 生成 clang++.cfg
-    # clang++ 每次启动自动加载，无需手动加参数
-    # 相对路径基于 cfg 所在目录（install\bin）解析，整体可搬移
+    # 生成 clang++.cfg（绝对路径，任何工作目录下都有效）
     # --------------------------
     - name: Create clang++ config
       shell: cmd
@@ -132,12 +129,37 @@ jobs:
 
         (
           echo -stdlib=libc++
-          echo -isystem ../include/c++/v1
-          echo -L ../lib
+          echo -isystem "%INSTALL_DIR%\include\c++\v1"
+          echo -L "%INSTALL_DIR%\lib"
           echo -fuse-ld=lld
         ) > "%INSTALL_DIR%\bin\clang++.cfg"
 
+        echo --- clang++.cfg ---
         type "%INSTALL_DIR%\bin\clang++.cfg"
+        echo --------------------
+
+
+    # --------------------------
+    # 生成可重定位辅助脚本
+    # 工具链拷到别的机器后，运行一次即可重新生成 cfg
+    # --------------------------
+    - name: Create relocation helper
+      shell: powershell
+      run: |
+        $script = @'
+$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$bin  = Join-Path $root 'bin'
+$cfg  = Join-Path $bin 'clang++.cfg'
+@(
+  '-stdlib=libc++',
+  "-isystem `"$(Join-Path $root 'include\c++\v1')`"",
+  "-L `"$(Join-Path $root 'lib')`"",
+  '-fuse-ld=lld'
+) | Set-Content -Path $cfg -Encoding ascii
+Write-Host "clang++.cfg updated for: $bin"
+Get-Content $cfg
+'@
+        Set-Content -Path "${{ env.INSTALL_DIR }}\fix-libcxx-cfg.ps1" -Value $script -Encoding ascii
 
 
     # --------------------------
@@ -152,7 +174,7 @@ jobs:
 
 
     # --------------------------
-    # Test libc++（无需 MSVC，也无需额外参数）
+    # Test libc++（无需任何额外参数）
     # --------------------------
     - name: Test libc++
       shell: cmd
@@ -167,7 +189,7 @@ jobs:
 
 
     # --------------------------
-    # Test Reflection（无需 MSVC，也无需额外参数）
+    # Test Reflection（无需任何额外参数）
     # --------------------------
     - name: Test Reflection
       shell: cmd
