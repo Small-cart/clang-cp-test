@@ -147,18 +147,18 @@ jobs:
       shell: powershell
       run: |
         $script = @'
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$bin  = Join-Path $root 'bin'
-$cfg  = Join-Path $bin 'clang++.cfg'
-@(
-  '-stdlib=libc++',
-  "-isystem `"$(Join-Path $root 'include\c++\v1')`"",
-  "-L `"$(Join-Path $root 'lib')`"",
-  '-fuse-ld=lld'
-) | Set-Content -Path $cfg -Encoding ascii
-Write-Host "clang++.cfg updated for: $bin"
-Get-Content $cfg
-'@
+        $root = Split-Path -Parent $MyInvocation.MyCommand.Path
+        $bin  = Join-Path $root 'bin'
+        $cfg  = Join-Path $bin 'clang++.cfg'
+        @(
+          '-stdlib=libc++',
+          "-isystem `"$(Join-Path $root 'include\c++\v1')`"",
+          "-L `"$(Join-Path $root 'lib')`"",
+          '-fuse-ld=lld'
+        ) | Set-Content -Path $cfg -Encoding ascii
+        Write-Host "clang++.cfg updated for: $bin"
+        Get-Content $cfg
+        '@
         Set-Content -Path "${{ env.INSTALL_DIR }}\fix-libcxx-cfg.ps1" -Value $script -Encoding ascii
 
 
